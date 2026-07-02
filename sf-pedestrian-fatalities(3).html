@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SF Pedestrian Fatalities</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <style>
+    /* ── Tokens ── */
+    :root {
+      --black:   #0f0f0f;
+      --ink:     #1c1c1c;
+      --steel:   #3a3f4b;
+      --mist:    #f0f0ee;
+      --white:   #ffffff;
+      --red:     #c0392b;
+      --amber:   #d4840a;
+      --slate:   #6b7280;
+      --border:  #d1d5db;
+      --open-dot:   #c0392b;
+      --unsure-dot: #d4840a;
+      --closed-dot: #4b7c59;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Georgia', serif;
+      background: var(--mist);
+      color: var(--ink);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--black);
+      color: var(--white);
+      padding: 14px 24px;
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      flex-shrink: 0;
+      border-bottom: 3px solid var(--red);
+    }
+    header h1 {
+      font-size: 1.15rem;
+      font-weight: normal;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    header .subtitle {
+      font-size: 0.78rem;
+      color: #9ca3af;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 0.02em;
+    }
+    #incident-count {
+      margin-left: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 0.78rem;
+      color: #9ca3af;
+    }
+
+    /* ── Layout ── */
+    .main {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 320px;
+      flex-shrink: 0;
+      background: var(--white);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .filters {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .filters h2 {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--slate);
+      margin-bottom: 12px;
+      font-family: 'Courier New', monospace;
+    }
+    .filter-group {
+      margin-bottom: 12px;
+    }
+    .filter-group label {
+      display: block;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--slate);
+      margin-bottom: 5px;
+      font-family: 'Courier New', monospace;
+    }
+    .filter-group select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      background: var(--mist);
+      font-size: 0.85rem;
+      font-family: 'Georgia', serif;
+      color: var(--ink);
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    .filter-group select:focus {
+      outline: 2px solid var(--red);
+      outline-offset: 1px;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .legend h2 {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--slate);
+      margin-bottom: 8px;
+      font-family: 'Courier New', monospace;
+    }
+    .legend-items { display: flex; flex-direction: column; gap: 5px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+    .legend-dot {
+      width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
+      border: 1.5px solid rgba(0,0,0,0.2);
+    }
+
+    /* ── Incident list ── */
+    .incident-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+    .incident-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .incident-item:hover { background: var(--mist); }
+    .incident-item.active { background: #fff5f5; border-left: 3px solid var(--red); }
+
+    .incident-date {
+      font-family: 'Courier New', monospace;
+      font-size: 0.72rem;
+      color: var(--slate);
+      margin-bottom: 2px;
+    }
+    .incident-location {
+      font-size: 0.88rem;
+      font-weight: bold;
+      color: var(--ink);
+      margin-bottom: 4px;
+      line-height: 1.3;
+    }
+    .incident-victim {
+      font-size: 0.8rem;
+      color: var(--steel);
+      font-style: italic;
+      margin-bottom: 4px;
+    }
+    .status-badge {
+      display: inline-block;
+      font-family: 'Courier New', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 2px;
+    }
+    .status-Open   { background: #fde8e8; color: var(--red); }
+    .status-Closed { background: #e6f0e9; color: #3a6647; }
+    .status-Unsure { background: #fef3e2; color: #92580a; }
+
+    .no-results {
+      padding: 32px 16px;
+      text-align: center;
+      color: var(--slate);
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+
+    /* ── Map ── */
+    #map {
+      flex: 1;
+      background: #e8e8e4;
+    }
+
+    /* ── Popup ── */
+    .leaflet-popup-content-wrapper {
+      border-radius: 2px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+      font-family: 'Georgia', serif;
+      border-top: 3px solid var(--red);
+      max-width: 300px;
+    }
+    .leaflet-popup-content { margin: 12px 14px; }
+    .popup-date {
+      font-family: 'Courier New', monospace;
+      font-size: 0.7rem;
+      color: var(--slate);
+      margin-bottom: 2px;
+    }
+    .popup-location {
+      font-size: 0.95rem;
+      font-weight: bold;
+      margin-bottom: 6px;
+      line-height: 1.3;
+    }
+    .popup-victim {
+      font-size: 0.82rem;
+      color: var(--steel);
+      font-style: italic;
+      margin-bottom: 8px;
+    }
+    .popup-row {
+      font-size: 0.78rem;
+      margin-bottom: 4px;
+      display: flex;
+      gap: 6px;
+    }
+    .popup-label {
+      font-family: 'Courier New', monospace;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      color: var(--slate);
+      flex-shrink: 0;
+      padding-top: 1px;
+    }
+    .popup-links { margin-top: 8px; }
+    .popup-links a {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--red);
+      text-decoration: none;
+      margin-bottom: 3px;
+      word-break: break-word;
+    }
+    .popup-links a:hover { text-decoration: underline; }
+
+    /* ── Loading / Error ── */
+    #loading-overlay {
+      position: fixed; inset: 0;
+      background: rgba(15,15,15,0.82);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 9999; color: var(--white);
+      font-family: 'Courier New', monospace;
+      font-size: 0.9rem; gap: 12px;
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #error-banner {
+      display: none;
+      background: #fde8e8;
+      border-left: 4px solid var(--red);
+      padding: 10px 16px;
+      font-size: 0.82rem;
+      color: var(--red);
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <span>Loading incident data…</span>
+</div>
+
+<header>
+  <h1>SF Pedestrian Fatalities</h1>
+  <span class="subtitle">Vision Zero · Public Record</span>
+  <span id="incident-count"></span>
+</header>
+
+<div id="error-banner"></div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="filters">
+      <h2>Filter incidents</h2>
+      <div class="filter-group">
+        <label>Year</label>
+        <select id="filter-year">
+          <option value="">All years</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Investigation status</label>
+        <select id="filter-status">
+          <option value="">All statuses</option>
+          <option value="Open">Open</option>
+          <option value="Closed">Closed</option>
+          <option value="Unsure">Unsure</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Hit &amp; Run</label>
+        <select id="filter-hitrun">
+          <option value="">All</option>
+          <option value="Yes">Yes</option>
+          <option value="No">No</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="legend">
+      <h2>Investigation status</h2>
+      <div class="legend-items">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--open-dot)"></div> Open</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--unsure-dot)"></div> Unsure</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--closed-dot)"></div> Closed</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#9ca3af"></div> Unknown</div>
+      </div>
+    </div>
+
+    <div class="incident-list" id="incident-list"></div>
+  </div>
+
+  <div id="map"></div>
+</div>
+
+<script>
+  // ── Config ──
+  const SF_API = "https://data.sfgov.org/resource/ubvf-ztfx.json"
+    + "?$where=collision_severity=%27Fatal%27%20AND%20mviw=%27Pedestrian%27&$limit=5000";
+
+  const SHEET_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQQ0MGTwqMiedkX1buVamHrrh_AaJgWS8LB2Mzf0UNo18u0-M4SZbCqdUyv81KQb7tTJEm5CZB3kt5d/pub?output=csv";
+
+  const STATUS_COLORS = {
+    Open:   "#c0392b",
+    Closed: "#4b7c59",
+    Unsure: "#d4840a",
+  };
+
+  // ── State ──
+  let allIncidents = [];
+  let markers = {};
+  let activeId = null;
+
+  // ── Map ──
+  const map = L.map("map").setView([37.7749, -122.4194], 12);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  }).addTo(map);
+
+  // ── CSV parser ──
+  function parseCSV(text) {
+    const lines = text.trim().split(/\r?\n/);
+    const headers = lines[0].split(",").map(h => h.trim().replace(/^"|"$/g, ""));
+    return lines.slice(1).map(line => {
+      // handle quoted fields with commas
+      const cols = [];
+      let cur = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') { inQ = !inQ; }
+        else if (c === "," && !inQ) { cols.push(cur); cur = ""; }
+        else { cur += c; }
+      }
+      cols.push(cur);
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = (cols[i] || "").trim(); });
+      return obj;
+    });
+  }
+
+  // ── Dot marker ──
+  function makeIcon(status) {
+    const color = STATUS_COLORS[status] || "#9ca3af";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18">
+      <circle cx="9" cy="9" r="7" fill="${color}" stroke="white" stroke-width="2"/>
+    </svg>`;
+    return L.divIcon({
+      html: svg,
+      className: "",
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+      popupAnchor: [0, -12],
+    });
+  }
+
+  // ── Popup HTML ──
+  function popupHTML(inc) {
+    const links = (inc.news_links || "").split("|||").map(u => u.trim()).filter(Boolean);
+    const linksHTML = links.length
+      ? `<div class="popup-links">${links.map(u => {
+          let domain = u;
+          try { domain = new URL(u).hostname.replace(/^www\./, ""); } catch(e) {}
+          return `<a href="${u}" target="_blank" rel="noopener">${domain} ↗</a>`;
+        }).join("")}</div>`
+      : "";
+    const victim = inc.victim_name
+      ? `<div class="popup-row"><span class="popup-label">Victim</span><span style="font-style:italic">${inc.victim_name}</span></div>` : "";
+    const status = inc.investigation_status
+      ? `<div class="popup-row"><span class="popup-label">Status</span>
+           <span class="status-badge status-${inc.investigation_status}">${inc.investigation_status}</span></div>` : "";
+    const hitrun = inc.hit_run
+      ? `<div class="popup-row"><span class="popup-label">Hit &amp; Run</span><span>${inc.hit_run}</span></div>` : "";
+    const pcf = inc.vz_pcf_description
+      ? `<div class="popup-row"><span class="popup-label">Primary Factor</span><span>${inc.vz_pcf_description}</span></div>` : "";
+
+    return `
+      <div class="popup-date">${inc._date_display || ""}</div>
+      <div class="popup-location">${inc._location_display || "Location unknown"}</div>
+      ${victim}
+      ${status}
+      ${hitrun}
+      ${pcf}
+      ${linksHTML}
+    `;
+  }
+
+  // ── Sidebar list item ──
+  function listItemHTML(inc) {
+    const badge = inc.investigation_status
+      ? `<span class="status-badge status-${inc.investigation_status}">${inc.investigation_status}</span>` : "";
+    const victim = inc.victim_name
+      ? `<div class="incident-victim">${inc.victim_name}</div>` : "";
+    return `
+      <div class="incident-date">${inc._date_display || "Date unknown"}</div>
+      <div class="incident-location">${inc._location_display || "Location unknown"}</div>
+      ${victim}
+      ${badge}
+    `;
+  }
+
+  // ── Render ──
+  function render(incidents) {
+    // clear old markers
+    Object.values(markers).forEach(m => map.removeLayer(m));
+    markers = {};
+
+    const list = document.getElementById("incident-list");
+    list.innerHTML = "";
+
+    if (!incidents.length) {
+      list.innerHTML = `<div class="no-results">No incidents match the current filters.</div>`;
+      document.getElementById("incident-count").textContent = "0 incidents";
+      return;
+    }
+
+    document.getElementById("incident-count").textContent =
+      `${incidents.length} incident${incidents.length !== 1 ? "s" : ""}`;
+
+    incidents.forEach(inc => {
+      const lat = parseFloat(inc.tb_latitude);
+      const lng = parseFloat(inc.tb_longitude);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        const marker = L.marker([lat, lng], { icon: makeIcon(inc.investigation_status) })
+          .addTo(map)
+          .bindPopup(popupHTML(inc), { maxWidth: 300 });
+        marker.on("click", () => setActive(inc.unique_id));
+        markers[inc.unique_id] = marker;
+      }
+
+      const el = document.createElement("div");
+      el.className = "incident-item" + (inc.unique_id === activeId ? " active" : "");
+      el.innerHTML = listItemHTML(inc);
+      el.addEventListener("click", () => setActive(inc.unique_id, true));
+      list.appendChild(el);
+    });
+  }
+
+  function setActive(id, panToMarker = false) {
+    activeId = id;
+    document.querySelectorAll(".incident-item").forEach(el => el.classList.remove("active"));
+    const items = document.querySelectorAll(".incident-item");
+    const filtered = getFiltered();
+    const idx = filtered.findIndex(i => i.unique_id === id);
+    if (idx >= 0) items[idx]?.classList.add("active");
+
+    if (markers[id]) {
+      if (panToMarker) map.panTo(markers[id].getLatLng());
+      markers[id].openPopup();
+    }
+  }
+
+  // ── Filters ──
+  function getFiltered() {
+    const year = document.getElementById("filter-year").value;
+    const status = document.getElementById("filter-status").value;
+    const hitrun = document.getElementById("filter-hitrun").value;
+    return allIncidents.filter(inc => {
+      if (year && inc._year !== year) return false;
+      if (status && inc.investigation_status !== status) return false;
+      if (hitrun && inc.hit_run !== hitrun) return false;
+      return true;
+    });
+  }
+
+  function applyFilters() {
+    render(getFiltered());
+  }
+
+  ["filter-year", "filter-status", "filter-hitrun"].forEach(id => {
+    document.getElementById(id).addEventListener("change", applyFilters);
+  });
+
+  // ── Populate year dropdown ──
+  function populateYears(incidents) {
+    const years = [...new Set(incidents.map(i => i._year).filter(Boolean))].sort().reverse();
+    const sel = document.getElementById("filter-year");
+    years.forEach(y => {
+      const opt = document.createElement("option");
+      opt.value = y; opt.textContent = y;
+      sel.appendChild(opt);
+    });
+  }
+
+  // ── Location display ──
+  function locationDisplay(inc) {
+    if (inc.primary_rd && inc.secondary_rd) {
+      return `${inc.primary_rd} & ${inc.secondary_rd}`;
+    }
+    return inc.primary_rd || inc.geocode_location || "Location on record";
+  }
+
+  // ── Load data ──
+  async function load() {
+    try {
+      const [sfRes, sheetRes] = await Promise.all([
+        fetch(SF_API),
+        fetch(SHEET_CSV),
+      ]);
+
+      if (!sfRes.ok) throw new Error(`DataSF API error: ${sfRes.status}`);
+      const sfData = await sfRes.json();
+
+      // Sheet may fail silently (CORS) — handle gracefully
+      let annotations = {};
+      try {
+        if (sheetRes.ok) {
+          const csv = await sheetRes.text();
+          parseCSV(csv).forEach(row => {
+            if (row.unique_id) annotations[String(row.unique_id).trim()] = row;
+          });
+        }
+      } catch (e) {
+        console.warn("Could not load annotation sheet:", e);
+      }
+
+      // Merge
+      allIncidents = sfData.map(sf => {
+        const id = String(sf.unique_id || "").trim();
+        const ann = annotations[id] || {};
+        const collision_date = sf.collision_date || "";
+        const year = sf.accident_year || (collision_date ? collision_date.slice(0, 4) : "");
+        return {
+          ...sf,
+          ...ann,
+          unique_id: id,
+          _year: String(year),
+          _date_display: collision_date ? new Date(collision_date).toLocaleDateString("en-US", {
+            year: "numeric", month: "long", day: "numeric", timeZone: "UTC"
+          }) : (year || "Date unknown"),
+          _location_display: locationDisplay(sf),
+        };
+      });
+
+      populateYears(allIncidents);
+      render(allIncidents);
+
+    } catch (err) {
+      console.error(err);
+      const banner = document.getElementById("error-banner");
+      banner.style.display = "block";
+      banner.textContent = `Could not load data: ${err.message}. Check your network connection or DataSF API availability.`;
+    } finally {
+      document.getElementById("loading-overlay").style.display = "none";
+    }
+  }
+
+  load();
+</script>
+</body>
+</html>
